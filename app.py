@@ -6,7 +6,7 @@ from flask_migrate import Migrate # type: ignore
 from models import db
 
 # create a Flask application instance 
-app = Flask(__nae__)
+app = Flask(__name__)
 
 # configure the database connection to the local file app.db
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'

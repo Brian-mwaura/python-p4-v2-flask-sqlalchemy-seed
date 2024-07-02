@@ -1,28 +1,38 @@
-# Seeding a Database : Code-Along
+# Flask-SQLAlchemy CRUD (Flask Shell): Code-Along
 
 ## Learning Goals
 
-- Initialize a database with sample data
-- Use the `Faker` package to generate random data
+- Use an external library Flask-SQLAlchemy to simplify tasks from earlier ORM
+  lessons.
+- Manage database tables and schemas without writing SQL.
+- Use the Flask Shell with Flask-SQLAlchemy to create, read, update and delete
+  records in a SQL database.
 
 ---
 
 ## Key Vocab
 
-- **Seed**: to fill a database with an initial set of data.
+- **Schema:** The blueprint of a database. Describes how data relates to other
+  data in tables, columns, and relationships between them.
+- **SQLAlchemy:** An open-source SQL library and object-relational mapper (ORM)
+  for the Python programming language.
+- **Flask-SQLAlchemy:** A Flask extension that makes it easier to use
+  SQLAlchemy.
+- **Flask Shell**: A Python interactive shell to run commands in the context of
+  a Flask application.
+- **Database Session**: An object that manages persistence operations for
+  ORM-mapped objects.
+- **Database Transaction**: A sequence of SQL statements that are processed as
+  an atomic unit. All SQL statements in the transaction are either applied (
+  committed) or undone (rolled back) together.
 
 ---
 
 ## Introduction
 
-When working with any application involving a database, it's a good idea to
-populate your database with some realistic sample data when you are working on
-building new features. Flask-SQLAlchemy, and many other ORMs, refer to the
-process of adding sample data to the database as **"seeding"** the database. In
-this lesson, we'll see some of the conventions and built-in features that make
-it easy to seed data in an Flask-SQLAlchemy application.
-
----
+We've see how to create a database that is linked to our Flask application. In
+this lesson, we'll use `Flask-SQLAlchemy` functions to insert, update, delete,
+and query rows in a table, all without writing any SQL!
 
 ## Setup
 
@@ -36,6 +46,22 @@ $ pipenv install
 $ pipenv shell
 ```
 
+The `server` directory contains the same `app.py` and `models.py` from the
+previous lesson.
+
+```text
+.
+├── CONTRIBUTING.md
+├── LICENSE.md
+├── Pipfile
+├── Pipfile.lock
+├── README.md
+└── server
+    ├── __init__.py
+    ├── app.py
+    └── models.py
+```
+
 Change into the `server` directory and configure the `FLASK_APP` and
 `FLASK_RUN_PORT` environment variables:
 
@@ -45,7 +71,8 @@ $ export FLASK_APP=app.py
 $ export FLASK_RUN_PORT=5555
 ```
 
-Let's create the database `app.db` with an empty `pets` table:
+Let's repeat through the process of creating the database `app.db` containing a
+`pets` table. Enter the following commands:
 
 ```console
 $ flask db init
@@ -59,15 +86,8 @@ $ flask db migrate -m "Initial migration."
 $ flask db upgrade head
 ```
 
-Confirm the empty `pets` table, either by using the Flask shell or by using a VS
-Code extension to view the table contents.
-
-```console
-$ flask shell
->>> Pet.query.all()
-[]
->>>
-```
+Use a VS Code extension such as SQLite Viewer to open the database file `app.db`
+and confirm the empty `pets` table:
 
 ![new pet table](https://curriculum-content.s3.amazonaws.com/7159/python-p4-v2-flask-sqlalchemy/pet_table.png)
 
@@ -75,338 +95,363 @@ NOTE: At any time during the lesson, you can delete the `instance` and
 `migrations` folders and re-execute the three `flask db` commands (init,
 migrate, upgrade) to recreate the initial version of the database.
 
-## Why Do We Need Seed Data?
+---
 
-In the previous lesson, we used the Flask Shell to call Flask-SQLAlchemy
-functions to insert rows into the `pets` table. Since the rows are saved in the
-database rather than in Python's memory, the data persists even after we exit
-out of the Flask shell.
+## The Flask Shell
 
-But how can we share this data with other developers who are working on the same
-application? How could we recover this data if our development database was
-deleted? We could include the `app.db` database file in version control, but
-this is generally considered bad practice. Since our database might get quite
-large over time, it's not practical to include it in version control (you'll
-even notice that in our Flask-SQLAlchemy projects' .gitignore file, we include a
-line that instructs Git not to track any .sqlite3 or .db files). There's got to
-be a better way!
+Let's see how to persist data about a pet. Recall from the previous lessons
+about ORM that we don't actually save a Python object to the database. Instead,
+we save the object's attributes as a new row in a table.
 
-The common approach to this problem is that instead of sharing the actual
-database file with other developers, we share the instructions for populating
-data in the database. By convention, the way we do this is by creating a Python
-file, `seed.py`, which is used to populate our database with sample data.
+We can interact with our code in the Python shell or an `ipdb` session, but
+working with a web framework presents a bit of a conundrum: the application
+isn't running! Thankfully, Flask comes equipped with an interactive shell that
+runs a development version of an application. Inside this shell, we can interact
+with models, views, contexts, and the database.
 
-Take a look at the file `server/seed.py`, which will insert 3 rows into the
-`pets` table:
-
-```py
-#!/usr/bin/env python3
-#server/seed.py
-
-from app import app
-from models import db, Pet
-
-with app.app_context():
-
-    # Create an empty list
-    pets = []
-
-    # Add some Pet instances to the list
-    pets.append(Pet(name = "Fido", species = "Dog"))
-    pets.append(Pet(name = "Whiskers", species = "Cat"))
-    pets.append(Pet(name = "Hermie", species = "Hamster"))
-
-    # Insert each Pet in the list into the database table
-    db.session.add_all(pets)
-
-    # Commit the transaction
-    db.session.commit()
-```
-
-The code creates an application context with the method call
-`app.app_context()`, and then performs the following within the context:
-
-1. Creates an empty list.
-2. Adds several `Pet` instances to the list.
-3. Calls `db.session.add_all()` to insert all pets in the list into the table.
-4. Calls `db.session.commit()` to commit the transaction.
-
-Assuming you are in the `server` directory, type the following to seed the
-database:
-
-```console
-$ python seed.py
-```
-
-Let's use the Flask shell to query the `pets` table and confirm the 3 pets were
-added:
+If you're not there already, navigate to the `server` directory, then enter the
+command `flask shell`:
 
 ```console
 $ flask shell
+>>>
+```
+
+You will type commands after the `>>>` prompt.
+
+First, let's import the necessary `db` database object and the `Pet` model:
+
+```console
 >>> from models import db, Pet
->>> Pet.query.all()
-[<Pet 1, Fido, Dog>, <Pet 2, Whiskers, Cat>, <Pet 3, Hermie, Hamster>]
 ```
 
-We can also use the SQLite Viewer (hit the refresh button) to see the new rows:
+## add() and commit()
 
-![insert 3 rows in pets table](https://curriculum-content.s3.amazonaws.com/7159/python-p4-v2-flask-sqlalchemy/3pets.png)
+Let's add a row to the `pets` table for a dog named "Fido". The steps to add a
+row are as follows:
 
-Let's update `seed.py` to add a fourth pet, a snake named "Slither":
+1. Create a new instance of the model class `Pet`.
+2. Add the `Pet` instance to the current database session.
+3. Commit the transaction and apply the changes to the database.
 
-```py
-#!/usr/bin/env python3
-#server/seed.py
-
-from app import app
-from models import db, Pet
-
-with app.app_context():
-
-    # Create an empty list
-    pets = []
-
-    # Add some Pet instances to the list
-    pets.append(Pet(name = "Fido", species = "Dog"))
-    pets.append(Pet(name = "Whiskers", species = "Cat"))
-    pets.append(Pet(name = "Hermie", species = "Hamster"))
-    pets.append(Pet(name = "Slither", species = "Snake"))
-
-    # Insert each Pet in the list into the database table
-    db.session.add_all(pets)
-
-    # Commit the transaction
-    db.session.commit()
-```
-
-Type `exit()` to exit the Flask Shell and return to the operating system shell.
-(NOTE: Instead of exiting in and out of the Flask shell, you can open a second
-terminal and execute the Flask shell and the operating system shell in separate
-terminals)
+The first step is creating the `Pet` instance. Type the following Python
+assignment statement in the Flask shell:
 
 ```console
->>> exit()
-$
+>>> pet1 = Pet(name = "Fido", species = "Dog")
 ```
 
-Run `python seed.py` at the command line to reseed the database:
+An instance of `Pet` is created, however, the object has not been persisted to
+the database.
+
+Let's confirm the `name` and `species` attributes have been assigned values, but
+`id` does not yet have a value:
 
 ```console
-$  python seed.py
-```
-
-Start the Flask Shell again and query the `pets` table:
-
-```console
-$ flask shell
->>> Pet.query.all()
-[<Pet 1, Fido, Dog>, <Pet 2, Whiskers, Cat>, <Pet 3, Hermie, Hamster>, <Pet 4, Fido, Dog>, <Pet 5, Whiskers, Cat>, <Pet 6, Hermie, Hamster>, <Pet 7, Slither, Snake>]
-```
-
-Notice there are 7 rows rather than 4! Each time we run `python seed.py`, we end
-up adding rows into the existing table. Let's update `seed.py ` to delete all
-rows in the table before adding new rows.
-
-Add the statement `Pet.query.delete()` as the first step in the seeding process:
-
-```py
-#!/usr/bin/env python3
-#server/seed.py
-
-from app import app
-from models import db, Pet
-
-with app.app_context():
-
-    # Delete all rows in the "pets" table
-    Pet.query.delete()
-
-    # Create an empty list
-    pets = []
-
-    # Add some Pet instances to the list
-    pets.append(Pet(name = "Fido", species = "Dog"))
-    pets.append(Pet(name = "Whiskers", species = "Cat"))
-    pets.append(Pet(name = "Hermie", species = "Hamster"))
-    pets.append(Pet(name = "Slither", species = "Snake"))
-
-    # Insert each Pet in the list into the database table
-    db.session.add_all(pets)
-
-    # Commit the transaction
-    db.session.commit()
-```
-
-Now if we need to make changes to the pet data and rerun `python seed.py`
-multiple times, the `pets` table will only contain the 4 rows:
-
-```console
->>> exit()
-$  python seed.py
-```
-
-```console
-$ flask shell
->>> Pet.query.all()
-[<Pet 1, Fido, Dog>, <Pet 2, Whiskers, Cat>, <Pet 3, Hermie, Hamster>, <Pet 4, Slither, Snake>]
+>>> pet1.name
+'Fido'
+>>> pet1.species
+'Dog'
+>>> pet1.id
 >>>
 ```
 
-![4 rows inserted in pet table](https://curriculum-content.s3.amazonaws.com/7159/python-p4-v2-flask-sqlalchemy/4pets.png)
-
-**NOTE**: If you have multiple tables in your database, you'll need to delete first the rows in the tables that have foreign key constraints before deleting the rows in the tables that have the primary key constraints. For example, if you have a `users` table and a `pets` table, and the `pets` table has a foreign key constraint on the `user_id` column, you'll need to delete the rows in the `pets` table before deleting the rows in the `users` table.
-
-## Generating Randomized Data
-
-One challenge of seeding a database is thinking up lots of sample data.
-Ultimately, when you're developing an application, it's helpful to have
-realistic data, but the actual content is not so important.
-
-One tool that can be used to help generate a lot of realistic randomized data is
-the [Faker library][faker]. This library is already included in the Pipfile for
-this application, so we can try it out.
-
-Try out some Faker methods in the Flask shell. First import the package and
-instantiate a `Faker` instance:
+The string representation returned by the implicit call to the `__repr__`
+function shows the id as `None`, confirming no value has been assigned:
 
 ```console
-$ flask shell
->>> from faker import Faker
->>> fake = Faker()
+>>> pet1
+<Pet None, Fido, Dog>
 ```
 
-Every time we call the `name()` method, we get a new random name:
+NOTE: The `id` won't be assigned until the `Pet` instance has been added to the
+database.
+
+Persisting an object to the database requires a database session, which is an
+object that manages database transactions. A transaction is a sequence of SQL
+statements that are processed as an atomic unit. This means that either all SQL
+statements in the transaction are either applied (committed) or they are all
+undone (rolled back) together.
+
+This is especially important if statements that occur in a sequence depend on
+previous statements executing properly. The workflow for a transaction is
+illustrated in the image below:
+
+![Workflow for a successful transaction. Shows that after a transaction begins,
+the state of the database is recorded, then statements are executed, then the
+transaction is committed if all statements are successful.](https://curriculum-content.s3.amazonaws.com/python/esal_0401.png "successful transaction")
+
+If any of the SQL statements in a transaction fail to execute properly, the
+database will be rolled back to the state recorded at the beginning of the
+transaction and the process will end, returning an error message. A committed
+transaction ensures all statements were executed in sequence and to completion.
+
+Flask-SQLAlchemy provides the `db.session` object through which we can manage
+changes to the database such as table row insertions, updates, and deletions.
+
+Let's add the pet object to the database session using the `db.session.add()`
+method. Type the following in the Flask shell:
 
 ```console
->>> fake.name()
-'Michelle Hill'
->>> fake.name()
-'Barbara Harrington'
+>>> db.session.add(pet1)
 ```
 
-Faker has a lot of random data generator functions that you can use:
+This method call will issue an SQL INSERT statement, but the `id` attribute of
+the `Pet` instance in the Python application is still undefined because we have
+not yet committed the current transaction. We need to call the
+`db.session.commit()` method to commit the transaction and ensure the new row
+was inserted in the database table.
 
 ```console
->>> fake.first_name()
-'Eric'
->>> fake.last_name()
-'Williams'
->>> fake.email()
-'valdezlisa@example.org'
->>> fake.color()
-'#c413a3'
->>> fake.address()
-'PSC 8907, Box 1499\nAPO AE 66234'
+>>> db.session.commit()
 ```
 
-Let's update `seed.py` to generate 10 pets, each having a fake first name and a
-species randomly chosen from a list:
+Check the `pets` table to confirm a new row was added. If you are using SQLite
+Viewer, you may need to press the refresh button to see the new row:
 
-```py
-#!/usr/bin/env python3
-#server/seed.py
-from random import choice as rc
-from faker import Faker
+![first row inserted in pet](https://curriculum-content.s3.amazonaws.com/7159/python-p4-v2-flask-sqlalchemy/insert_dog1.png)
 
-from app import app
-from models import db, Pet
-
-with app.app_context():
-
-    # Create and initialize a faker generator
-    fake = Faker()
-
-    # Delete all rows in the "pets" table
-    Pet.query.delete()
-
-    # Create an empty list
-    pets = []
-
-    species = ['Dog', 'Cat', 'Chicken', 'Hamster', 'Turtle']
-
-    # Add some Pet instances to the list
-    for n in range(10):
-        pet = Pet(name=fake.first_name(), species=rc(species))
-        pets.append(pet)
-
-    # Insert each Pet in the list into the "pets" table
-    db.session.add_all(pets)
-
-    # Commit the transaction
-    db.session.commit()
-
-```
-
-Rerun the seed script:
+When the transaction is committed and the row is inserted in the `pets` table,
+the `id` of the local `Pet` instance is assigned the primary key value from the
+new row:
 
 ```console
-$ python seed.py
-```
-
-Then query the pet table in the Flask shell to view the 10 random pets:
-
-```console
-$ flask shell
->>> Pet.query.all()
-[<Pet 1, Victoria, Dog>, <Pet 2, Michael, Cat>, <Pet 3, Kristie, Chicken>, <Pet 4, Ronald, Hamster>, <Pet 5, Mark, Cat>, <Pet 6, Shawna, Cat>, <Pet 7, Alicia, Hamster>, <Pet 8, Brian, Cat>, <Pet 9, Jessica, Chicken>, <Pet 10, Elizabeth, Cat>]
+>>> pet1.id
+1
 >>>
 ```
 
-![insert 10 pets in table](https://curriculum-content.s3.amazonaws.com/7159/python-p4-v2-flask-sqlalchemy/10pets.png)
+Let's add another pet to the database. Type each Python statement one at a time
+at the Flask shell prompt:
 
-## Querying the sample data
+```console
+>>> pet2 = Pet(name = "Whiskers", species = "Cat")
+>>> db.session.add(pet2)
+>>> db.session.commit()
+```
 
-Let's try out a few queries using `filter_by`. Of course, your results will
-differ since the data is random.
+Refresh the view in the SQLite Viewer to confirm a new row was inserted in the
+`pets` table for the cat named "Whiskers":
 
-Filter to get just the cats:
+![second row inserted in pet table](https://curriculum-content.s3.amazonaws.com/7159/python-p4-v2-flask-sqlalchemy/insert_cat.png)
+
+In the Flask shell, we can confirm the `id` attribute is assigned for the newly
+persisted object:
+
+```console
+>>> pet2.name
+'Whiskers'
+>>> pet2.species
+'Cat'
+>>> pet2.id
+2
+>>> pet2
+<Pet 2, Whiskers, Cat>
+```
+
+## query()
+
+We can query all the rows in the table associated with the `Pet` model as shown:
+
+```console
+>>> Pet.query.all()
+[<Pet 1, Fido, Dog>, <Pet 2, Whiskers, Cat>]
+```
+
+How did the `Pet` class get a `query` attribute? `Pet` inherits it from
+`db.Model`! The `all()` function says to return every row from the query result.
+
+If we just want just the first row returned from a query, use the `first()`
+function:
+
+```console
+>>> Pet.query.first()
+<Pet 1, Fido, Dog>
+```
+
+## filter()
+
+We can filter rows using the `filter` function. The function takes a boolean
+expression as an argument that is evaluated against each model instance returned
+from the query. For example, if we want to filter each pet by species:
+
+```console
+>>> Pet.query.filter(Pet.species == 'Cat').all()
+[<Pet 2, Whiskers, Cat>]
+```
+
+If we want pets whose name starts with the letter 'F':
+
+```console
+>>> Pet.query.filter(Pet.name.startswith('F')).all()
+[<Pet 1, Fido, Dog>]
+```
+
+## filter_by()
+
+The `filter` function is powerful in that you can pass any boolean expression to
+test on a model instance. However, we often want to just look for rows having a
+particular value in a column. The `filter_by` function is useful for that. The
+criteria passed as a function argument takes a single equal sign. For example,
+to get all cats:
 
 ```console
 >>> Pet.query.filter_by(species = 'Cat').all()
-[<Pet 2, Michael, Cat>, <Pet 5, Mark, Cat>, <Pet 6, Shawna, Cat>, <Pet 8, Brian, Cat>, <Pet 10, Elizabeth, Cat>]
+[<Pet 2, Whiskers, Cat>]
 ```
 
-Filter to get just dogs:
+We can filter by the primary key `id` to get a specific row:
 
 ```console
->>> Pet.query.filter_by(species = 'Dog').all()
-[<Pet 1, Victoria, Dog>]
->
+>>> Pet.query.filter_by(id = 1).first()
+<Pet 1, Fido, Dog>
 ```
 
-Let's count the number of cats:
+## get()
+
+If you want to access a certain row by its primary key, use
+`db.session.get(Model, id)`. It will return the row with the given primary key,
+or `None` if it doesn't exist. The main advantage is caching: SQLAlchemy's
+session maintains an identity map, so if the object with the specified ID is
+already in the session, it will return that instance without hitting the
+database again.
 
 ```console
->>> Pet.query.filter_by(species='Cat').count()
-5
+>>> pet = db.session.get(Pet,1)
+>>> pet
+<Pet 1, Fido, Dog>
+>>> pet is None
+False
+>>> pet = db.session.get(Pet,20)
+>>> pet
+>>> pet is None
+True
 >>>
 ```
 
-We can use the `order_by()` function to sort the query result by name:
+## order_by()
+
+By default, results from any database query are ordered by their primary key.
+The `order_by()` method allows us to sort by any column. To sort in ascending
+order of species:
 
 ```console
->>> Pet.query.order_by('name').all()
-[<Pet 7, Alicia, Hamster>, <Pet 8, Brian, Cat>, <Pet 10, Elizabeth, Cat>, <Pet 9, Jessica, Chicken>, <Pet 3, Kristie, Chicken>, <Pet 5, Mark, Cat>, <Pet 2, Michael, Cat>, <Pet 4, Ronald, Hamster>, <Pet 6, Shawna, Cat>, <Pet 1, Victoria, Dog>]
->>>
+>>> Pet.query.order_by('species').all()
+[<Pet 2, Whiskers, Cat>, <Pet 1, Fido, Dog>]
 ```
 
-The `limit()` function restricts the number of rows returned from the query:
+### `func`
+
+Importing `func` from `sqlalchemy` gives us access to common SQL operations
+through functions like `sum()` and `count()`.
 
 ```console
->>> Pet.query.limit(3).all()
-[<Pet 1, Victoria, Dog>, <Pet 2, Michael, Cat>, <Pet 3, Kristie, Chicken>]
+>>>from sqlalchemy import func
+```
+
+As these operations act upon columns, we carry them out through wrapping a
+`Column` object passed to the `query()` method. Note we are invoking the `query`
+function on the session, rather than accessing the `query` attribute inherited
+from `db.Model`:
+
+```console
+>>> db.session.query(func.count(Pet.id)).first()
+(2,)
+```
+
+It is best practice to call these functions as `func.operation()` rather than
+their name alone because many of these functions have name conflicts with
+functions in the Python standard library, such as `sum()`.
+
+## update
+
+When we assign a new attribute value to a Python object that has been persisted
+to the database, the associated table row **does not** automatically get
+updated.
+
+We need to perform the following steps to update a row in the `pets` table:
+
+1. Update one or more attribute values of a `Pet` instance.
+2. Commit the transaction to apply the changes to the database.
+
+```console
+>>> pet1
+<Pet 1, Fido, Dog>
+>>> pet1.name = "Fido the mighty"   # this does not update the table row
+>>> pet1
+<Pet 1, Fido the mighty, Dog>
+>>> db.session.commit()             # commit the UPDATE statement
+```
+
+We can see the table row is updated once the transaction is committed:
+
+![update row in pet table](https://curriculum-content.s3.amazonaws.com/7159/python-p4-v2-flask-sqlalchemy/update_pet.png)
+
+## delete()
+
+The `db.session.delete()` function is used to delete the row associated with an
+object:
+
+```console
+>>> db.session.delete(pet1)
+>>> db.session.commit()
+```
+
+Query the `Pet` model to confirm the row was deleted:
+
+```console
+>>> Pet.query.all()
+[<Pet 2, Whiskers, Cat>]
+```
+
+We can also check the table using the SQLite Viewer:
+
+![delete row from pet table](https://curriculum-content.s3.amazonaws.com/7159/python-p4-v2-flask-sqlalchemy/delete_pet.png)
+
+If you want to delete all table rows, call the function `Pet.query.delete()`.
+The function returns the number of rows deleted. Make sure you commit the
+transaction to persist the deleted row.
+
+```console
+>>> Pet.query.delete()
+1
+>>> db.session.commit()
+```
+
+We can use the Flask shell to confirm there are no pets in the table:
+
+```console
+>>> Pet.query.all()
+[]
+```
+
+The SQLite Viewer also shows the empty table:
+
+![new pet table](https://curriculum-content.s3.amazonaws.com/7159/python-p4-v2-flask-sqlalchemy/pet_table.png)
+
+## Exiting the Flask shell
+
+You can exit the Flask shell and return to the command line prompt using
+`CTRL + D` or the `exit()` function:
+
+```console
+>>> exit()
+
+$
 ```
 
 ## Conclusion
 
-In this lesson, we learned the importance of having a seed file to quickly set
-up the database with sample data. We also learned how to use the Faker library
-to quickly generate randomized seed data.
+`flask shell` is a great tool for simple debugging and adding or updating a few
+records. We want our app to handle many records though, which would take too
+long to do by hand in the Flask shell. In subsequent lessons, we'll see how to
+add routes to a Flask app to support full CRUD operations.
 
 ---
 
 ## Resources
 
-- [SQLAlchemy Query Documentation](https://docs.sqlalchemy.org/en/14/orm/query.html)
-- [Faker Documentation](https://faker.readthedocs.io/en/master/)
-- [random — Generate pseudo-random numbers - Python](https://docs.python.org/3/library/random.html)
+- [Flask Shell](https://flask.palletsprojects.com/en/2.3.x/shell/)
+- [Flask-SQLAlchemy](https://flask-sqlalchemy.palletsprojects.com/en/3.0.x/)
+- [Flask-SQLAlchemy Session](https://flask-sqlalchemy.palletsprojects.com/en/3.0.x/api/#module-flask_sqlalchemy.session)
+- [SQLAlchemy Transaction](https://docs.sqlalchemy.org/en/20/orm/session_transaction.html)
